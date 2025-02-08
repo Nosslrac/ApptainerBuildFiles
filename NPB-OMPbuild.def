@@ -1,0 +1,76 @@
+Bootstrap: docker-archive
+From: rockyWithDep.tar
+Stage: builder
+
+%setup
+    echo "Starting to build the container!!"
+
+# Required files to build the benchmark and the openmp runtime
+%files
+    ./llvm-project/openmp/ /llvm-project/
+    ./llvm-project/runtimes/ /llvm-project/
+    ./llvm-project/cmake/ /llvm-project/
+    ./NPB-CPP/* /NPB-CPP/
+
+# Builds the openmp runtime
+#   - specify openmp runtime location for bench build
+%post
+    cd /llvm-project/openmp/
+    rm -rf build && mkdir build && cd build
+    cmake -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ ..
+    make && make install
+    export OPENMP_LIB=/usr/local/lib/
+    export OPENMP_INC=/usr/local/include/
+    cd /NPB-CPP/NPB-OMP/
+    ./instantiateBuild.sh
+    ./buildAll.sh
+
+# Verify that the correct openmp runtime is linked
+%test
+    ldd /NPB-CPP/NPB-OMP/bin/ep.A | grep -q "libomp.so => /usr/local/lib/"
+    if [ $? -eq 0 ]; then
+        echo "Omp linking success"
+    else
+        echo "ERROR: The wrong libomp is linked"
+        exit 1
+    fi
+
+# Bare bones docker image for runtime
+Bootstrap: docker-archive
+From: rockylinux.tar
+Stage: final
+
+%arguments
+    OUT_DIR=/app/output/
+
+# The minimal running container requires:
+#   - openmp runtime shared lib
+#   - the executables
+#   - the wrapper script running the 
+#     executables and redirecting the output
+%files from builder
+    /usr/local/ /usr/local/
+    /NPB-CPP/NPB-OMP/bin/ /app/
+    /NPB-CPP/NPB-OMP/runNPB-OMP.sh /app/
+
+# Make sure the benchmarks are executable and outputdir exists
+%post
+    mkdir -p {{ OUT_DIR }}
+    chmod -R +x /app/
+
+# Specifies the bench size and output mount
+%environment
+   export BENCH_SIZE=${BENCH_SIZE:-'S'}
+
+
+# Default runs with size A
+%runscript
+    /app/runNPB-OMP.sh {{ OUT_DIR }}
+
+%labels
+    Author Axel Carlsson
+    Version v1.0
+
+%help
+    This is a Rocky Linux 9.3 image containing the Nas parallel benchmark
+    built with a custom version of the openmp runtime.

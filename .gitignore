@@ -1,0 +1,5 @@
+**/NPB-CPP/
+**/llvm-project/
+**/output/
+*.tar
+*.sif
