@@ -7,3 +7,5 @@ RUN dnf install -y clang lld \
     && dnf clean all
 
 RUN rm -rf /lib64/libomp*
+
+# Standard rockylinux image with build dependencies
